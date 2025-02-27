@@ -2189,24 +2189,16 @@ mod test {
         Ok(())
     }
 
+    #[derive(Serialize)]
+    struct EmptyClaims { }
+
     #[tokio::test]
     async fn test_apply_auth_bearer_token() -> anyhow::Result<()> {
-        use hmac::{Hmac, Mac};
-        use jwt::SignWithKey;
-        use sha2::Sha256;
         let client = Client::default();
-        let header = jwt::header::Header {
-            algorithm: jwt::algorithm::AlgorithmType::Hs256,
-            key_id: None,
-            type_: None,
-            content_type: None,
-        };
-        let claims: jwt::claims::Claims = Default::default();
-        let key: Hmac<Sha256> = Hmac::new_from_slice(b"some-secret").unwrap();
-        let token = jwt::Token::new(header, claims)
-            .sign_with_key(&key)?
-            .as_str()
-            .to_string();
+        let header = jsonwebtoken::Header::default();
+        let claims = EmptyClaims { };
+        let key = jsonwebtoken::EncodingKey::from_secret(b"some-secret");
+        let token = jsonwebtoken::encode(&header, &claims, &key)?;
 
         // we have to have it in the stored auth so we'll get to the token cache check.
         client
@@ -2226,17 +2218,18 @@ mod test {
                 }),
             )
             .await;
+
         assert_eq!(
             RequestBuilderWrapper::from_client(&client, |client| client
                 .get("https://example.com/some/module.wasm"))
-            .apply_auth(
-                &Reference::try_from(HELLO_IMAGE_TAG)?,
-                RegistryOperation::Pull
-            )
-            .await?
-            .into_request_builder()
-            .build()?
-            .headers()["Authorization"],
+                .apply_auth(
+                    &Reference::try_from(HELLO_IMAGE_TAG)?,
+                    RegistryOperation::Pull
+                )
+                .await?
+                .into_request_builder()
+                .build()?
+                .headers()["Authorization"],
             format!("Bearer {}", &token)
         );
 
